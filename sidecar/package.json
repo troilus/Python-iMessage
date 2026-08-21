@@ -1,13 +1,13 @@
 {
-  "name": "photon-sidecar",
+  "name": "spectrum-imessage",
   "version": "1.0.0",
   "type": "module",
-  "description": "Node.js sidecar for Photon iMessage SDK",
+  "description": "Spectrum iMessage app",
   "main": "sidecar.mjs",
   "scripts": {
     "start": "node sidecar.mjs"
   },
   "dependencies": {
-    "@photon-ai/advanced-imessage": "^2.0.0"
+    "spectrum-ts": "latest"
   }
 }
