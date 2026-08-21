@@ -1,0 +1,13 @@
+{
+  "name": "photon-sidecar",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Node.js sidecar for Photon iMessage SDK",
+  "main": "sidecar.mjs",
+  "scripts": {
+    "start": "node sidecar.mjs"
+  },
+  "dependencies": {
+    "@photon-ai/advanced-imessage": "^2.0.0"
+  }
+}
