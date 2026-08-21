@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spectrum iMessage</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f0f0; height: 100vh; display: flex; flex-direction: column; }
+
+    .header { background: #007AFF; color: white; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; }
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .status { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3b30; }
+    .status-dot.connected { background: #34c759; }
+
+    .container { flex: 1; display: flex; overflow: hidden; }
+
+    .chat-panel { flex: 1; display: flex; flex-direction: column; background: white; }
+    .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .message { max-width: 70%; padding: 10px 14px; border-radius: 18px; font-size: 15px; line-height: 1.4; word-break: break-word; }
+    .message.incoming { background: #e9e9eb; align-self: flex-start; border-bottom-left-radius: 4px; }
+    .message.outgoing { background: #007AFF; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .message .meta { font-size: 11px; opacity: 0.6; margin-top: 4px; }
+    .message.outgoing .meta { text-align: right; }
+
+    .input-area { padding: 12px 16px; background: #f8f8f8; border-top: 1px solid #ddd; display: flex; gap: 8px; }
+    .input-area input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 20px; font-size: 15px; outline: none; }
+    .input-area input:focus { border-color: #007AFF; }
+    .input-area button { padding: 10px 20px; background: #007AFF; color: white; border: none; border-radius: 20px; font-size: 15px; cursor: pointer; }
+    .input-area button:hover { background: #0056CC; }
+    .input-area button:disabled { background: #ccc; cursor: not-allowed; }
+
+    .side-panel { width: 320px; background: #f8f8f8; border-left: 1px solid #ddd; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333; }
+    .card label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+    .card input, .card textarea, .card select { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 10px; outline: none; }
+    .card input:focus, .card textarea:focus { border-color: #007AFF; }
+    .card textarea { resize: vertical; min-height: 60px; }
+    .card button { width: 100%; padding: 10px; background: #007AFF; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; margin-top: 4px; }
+    .card button:hover { background: #0056CC; }
+    .card button.secondary { background: #f2f2f7; color: #333; }
+    .card button.secondary:hover { background: #e5e5ea; }
+    .card button.danger { background: #ff3b30; }
+    .card button.danger:hover { background: #d32f2f; }
+
+    .log { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 10px; font-family: 'Consolas', monospace; font-size: 12px; max-height: 150px; overflow-y: auto; }
+    .log .info { color: #4ec9b0; }
+    .log .error { color: #f44747; }
+    .log .sent { color: #569cd6; }
+
+    .typing-indicator { align-self: flex-start; padding: 10px 14px; background: #e9e9eb; border-radius: 18px; display: none; }
+    .typing-indicator.show { display: block; }
+    .typing-dots { display: flex; gap: 4px; }
+    .typing-dots span { width: 6px; height: 6px; background: #999; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out; }
+    .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+    .file-input-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
+    .file-input-wrapper input[type=file] { position: absolute; left: 0; top: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+    .file-label { display: block; padding: 8px 10px; border: 1px dashed #ccc; border-radius: 8px; text-align: center; color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Spectrum iMessage</h1>
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">未连接</span>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="chat-panel">
+      <div class="messages" id="messages">
+        <div class="typing-indicator" id="typingIndicator">
+          <div class="typing-dots"><span></span><span></span><span></span></div>
+        </div>
+      </div>
+      <div class="input-area">
+        <input type="text" id="messageInput" placeholder="输入消息..." />
+        <button id="sendBtn" onclick="sendMessage()">发送</button>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="card">
+        <h3>发送消息</h3>
+        <label>收件人号码</label>
+        <input type="text" id="recipientInput" value="+8613688426871" placeholder="+手机号码" />
+        <label>消息内容</label>
+        <textarea id="sendTextInput" placeholder="输入消息..."></textarea>
+        <button onclick="sendMessage()">发送</button>
+      </div>
+
+      <div class="card">
+        <h3>回复消息</h3>
+        <label>选择消息</label>
+        <select id="replyMessageSelect"><option value="">-- 先发送一些消息 --</select>
+        <label>回复内容</label>
+        <textarea id="replyTextInput" placeholder="输入回复..."></textarea>
+        <button onclick="replyMessage()">回复</button>
+      </div>
+
+      <div class="card">
+        <h3>打字指示器</h3>
+        <label>目标号码</label>
+        <input type="text" id="typingRecipient" value="+8613688426871" placeholder="+手机号码" />
+        <button onclick="startTyping()" class="secondary">开始输入</button>
+        <button onclick="stopTyping()" class="secondary">停止输入</button>
+      </div>
+
+      <div class="card">
+        <h3>发送附件</h3>
+        <label>收件人号码</label>
+        <input type="text" id="attachRecipient" value="+8613688426871" placeholder="+手机号码" />
+        <div class="file-input-wrapper">
+          <div class="file-label" id="fileLabel">点击选择文件</div>
+          <input type="file" id="fileInput" onchange="onFileSelect(event)" />
+        </div>
+        <button onclick="sendAttachment()" id="attachBtn" disabled>发送附件</button>
+      </div>
+
+      <div class="card">
+        <h3>服务号码</h3>
+        <p style="font-size:13px;color:#666;">你的号码：<strong>+8613688426871</strong></p>
+        <p style="font-size:13px;color:#666;">服务号码：<strong>+14156035536</strong></p>
+      </div>
+
+      <div class="card">
+        <h3>操作日志</h3>
+        <div class="log" id="log"></div>
+        <button onclick="clearLog()" class="secondary" style="margin-top:8px;">清空日志</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = '';
+    let eventSource = null;
+    let chatGuid = null;
+    let allMessages = [];
+
+    function log(text, type = 'info') {
+      const el = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      el.innerHTML += `<div class="${type}">[${time}] ${text}</div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '';
+    }
+
+    function updateStatus(connected) {
+      document.getElementById('statusDot').className = 'status-dot' + (connected ? ' connected' : '');
+      document.getElementById('statusText').textContent = connected ? '已连接' : '未连接';
+    }
+
+    function addMessage(text, isFromMe, sender, timestamp) {
+      const el = document.getElementById('messages');
+      const typingEl = document.getElementById('typingIndicator');
+      const div = document.createElement('div');
+      div.className = 'message ' + (isFromMe ? 'outgoing' : 'incoming');
+      const time = timestamp ? new Date(timestamp).toLocaleTimeString() : '';
+      const senderLabel = isFromMe ? '我' : (sender || '对方');
+      div.innerHTML = `${text}<div class="meta">${senderLabel} · ${time}</div>`;
+      el.insertBefore(div, typingEl);
+      el.scrollTop = el.scrollHeight;
+
+      const idx = allMessages.length;
+      allMessages.push({ text, isFromMe, sender, timestamp, id: idx });
+      updateReplySelect();
+    }
+
+    function updateReplySelect() {
+      const sel = document.getElementById('replyMessageSelect');
+      sel.innerHTML = '<option value="">-- 选择消息 --</option>';
+      allMessages.forEach((m, i) => {
+        const preview = m.text.substring(0, 30) + (m.text.length > 30 ? '...' : '');
+        const label = (m.isFromMe ? '我' : (m.sender || '对方')) + ': ' + preview;
+        sel.innerHTML += `<option value="${i}">${label}</option>`;
+      });
+    }
+
+    function connectSSE() {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(API + '/events');
+      eventSource.onopen = () => {
+        updateStatus(true);
+        log('SSE 已连接', 'info');
+      };
+      eventSource.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.type === 'connected') return;
+        if (data.type === 'message.received' || data.type === 'message.sent') {
+          const msg = data.message;
+          const isFromMe = msg.isFromMe || data.type === 'message.sent';
+          addMessage(msg.content?.text || '[非文本消息]', isFromMe, msg.sender, data.timestamp);
+          log(`收到消息: ${msg.content?.text}`, 'info');
+        }
+      };
+      eventSource.onerror = () => {
+        updateStatus(false);
+        log('SSE 连接断开，3秒后重连...', 'error');
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    async function apiCall(method, path, body) {
+      const opts = { method, headers: { 'Content-Type': 'application/json' } };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(API + path, opts);
+      return res.json();
+    }
+
+    async function sendMessage() {
+      const recipient = document.getElementById('recipientInput').value.trim();
+      const text = document.getElementById('sendTextInput').value.trim() || document.getElementById('messageInput').value.trim();
+      if (!recipient || !text) { log('请填写收件人和消息内容', 'error'); return; }
+
+      document.getElementById('sendBtn').disabled = true;
+      log(`发送中: ${text}`, 'sent');
+
+      try {
+        const result = await apiCall('POST', '/send', { recipient, text });
+        chatGuid = result.chatGuid;
+        log(`发送成功, chatGuid: ${chatGuid}`, 'info');
+        addMessage(text, true, 'me', new Date().toISOString());
+        document.getElementById('sendTextInput').value = '';
+        document.getElementById('messageInput').value = '';
+      } catch (e) {
+        log(`发送失败: ${e.message}`, 'error');
+      }
+      document.getElementById('sendBtn').disabled = false;
+    }
+
+    async function replyMessage() {
+      const idx = document.getElementById('replyMessageSelect').value;
+      const text = document.getElementById('replyTextInput').value.trim();
+      if (!text) { log('请输入回复内容', 'error'); return; }
+      if (!chatGuid) { log('请先发送一条消息以建立对话', 'error'); return; }
+
+      log(`回复中: ${text}`, 'sent');
+      try {
+        await apiCall('POST', '/reply', { chatGuid, text });
+        log('回复成功', 'info');
+        addMessage(text, true, 'me', new Date().toISOString());
+        document.getElementById('replyTextInput').value = '';
+      } catch (e) {
+        log(`回复失败: ${e.message}`, 'error');
+      }
+    }
+
+    async function startTyping() {
+      const recipient = document.getElementById('typingRecipient').value.trim();
+      if (!chatGuid && !recipient) { log('请先发送消息或输入目标号码', 'error'); return; }
+      try {
+        if (!chatGuid) {
+          const r = await apiCall('POST', '/send', { recipient, text: ' ' });
+          chatGuid = r.chatGuid;
+        }
+        await apiCall('POST', '/typing', { chatGuid, isTyping: true });
+        log('打字指示器已开启', 'info');
+      } catch (e) {
+        log(`失败: ${e.message}`, 'error');
+      }
+    }
+
+    async function stopTyping() {
+      if (!chatGuid) { log('没有活跃的对话', 'error'); return; }
+      try {
+        await apiCall('POST', '/typing', { chatGuid, isTyping: false });
+        log('打字指示器已关闭', 'info');
+      } catch (e) {
+        log(`失败: ${e.message}`, 'error');
+      }
+    }
+
+    let selectedFile = null;
+    function onFileSelect(e) {
+      selectedFile = e.target.files[0];
+      if (selectedFile) {
+        document.getElementById('fileLabel').textContent = selectedFile.name;
+        document.getElementById('attachBtn').disabled = false;
+      }
+    }
+
+    async function sendAttachment() {
+      const recipient = document.getElementById('attachRecipient').value.trim();
+      if (!recipient || !selectedFile) { log('请选择文件并填写收件人', 'error'); return; }
+
+      document.getElementById('attachBtn').disabled = true;
+      log(`发送附件: ${selectedFile.name}`, 'sent');
+
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const base64 = reader.result.split(',')[1];
+          await apiCall('POST', '/send-attachment', {
+            recipient,
+            fileName: selectedFile.name,
+            fileData: base64,
+          });
+          log('附件发送成功', 'info');
+          selectedFile = null;
+          document.getElementById('fileLabel').textContent = '点击选择文件';
+          document.getElementById('fileInput').value = '';
+          document.getElementById('attachBtn').disabled = true;
+        };
+        reader.readAsDataURL(selectedFile);
+      } catch (e) {
+        log(`附件发送失败: ${e.message}`, 'error');
+        document.getElementById('attachBtn').disabled = false;
+      }
+    }
+
+    document.getElementById('messageInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+
+    async function loadHistory() {
+      try {
+        const res = await apiCall('GET', '/messages');
+        if (res.messages) {
+          res.messages.forEach(m => {
+            const isFromMe = m.message?.isFromMe || m.type === 'message.sent';
+            addMessage(m.message?.content?.text || '[消息]', isFromMe, m.message?.sender, m.timestamp);
+          });
+          log(`加载了 ${res.messages.length} 条历史消息`, 'info');
+        }
+      } catch (e) {
+        log(`加载历史失败: ${e.message}`, 'error');
+      }
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await apiCall('GET', '/health');
+        updateStatus(res.status === 'ok');
+        log('健康检查通过', 'info');
+      } catch (e) {
+        updateStatus(false);
+        log('服务未运行', 'error');
+      }
+    }
+
+    checkHealth();
+    connectSSE();
+    loadHistory();
+  </script>
+</body>
+</html>

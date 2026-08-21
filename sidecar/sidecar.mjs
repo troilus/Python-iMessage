@@ -1,6 +1,12 @@
+import "dotenv/config";
 import { Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = parseInt(process.env.SIDECAR_PORT || "8765", 10);
 
@@ -39,6 +45,7 @@ function sendJson(res, status, data) {
 }
 
 const sseClients = new Set();
+const recentMessages = [];
 
 function broadcast(data) {
   const payload = `data: ${JSON.stringify(data)}\n\n`;
@@ -90,6 +97,19 @@ const server = http.createServer(async (req, res) => {
       }
 
       const msg = await space.send(text);
+      const msgData = {
+        type: "message.sent",
+        chatGuid: space.id,
+        message: {
+          guid: msg?.id,
+          content: { text },
+          recipient,
+          isFromMe: true,
+        },
+        timestamp: new Date().toISOString(),
+      };
+      recentMessages.push(msgData);
+      if (recentMessages.length > 100) recentMessages.shift();
       sendJson(res, 200, {
         messageGuid: msg?.id,
         chatGuid: space.id,
@@ -184,6 +204,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/messages") {
+      sendJson(res, 200, { messages: recentMessages });
+      return;
+    }
+
+    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+      const filePath = path.join(__dirname, "index.html");
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, "utf-8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(content);
+      } else {
+        sendJson(res, 404, { error: "index.html not found" });
+      }
+      return;
+    }
+
     sendJson(res, 404, { error: "Not found" });
   } catch (error) {
     console.error("Request error:", error);
@@ -191,24 +228,28 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.listen(PORT, () => {
+  console.log(`Spectrum iMessage app listening on http://localhost:${PORT}`);
+});
+
 for await (const [space, message] of app.messages) {
   if (message.content.type === "text") {
-    broadcast({
+    const msgData = {
       type: "message.received",
       chatGuid: space.id,
       message: {
         guid: message.id,
         content: { text: message.content.text },
         sender: message.sender?.id,
+        isFromMe: message.direction === "outbound",
       },
       timestamp: message.timestamp,
-    });
+    };
+    recentMessages.push(msgData);
+    if (recentMessages.length > 100) recentMessages.shift();
+    broadcast(msgData);
   }
 }
-
-server.listen(PORT, () => {
-  console.log(`Spectrum iMessage app listening on http://localhost:${PORT}`);
-});
 
 process.on("SIGINT", async () => {
   console.log("Shutting down...");

@@ -8,6 +8,7 @@
     "start": "node sidecar.mjs"
   },
   "dependencies": {
+    "dotenv": "latest",
     "spectrum-ts": "latest"
   }
 }
